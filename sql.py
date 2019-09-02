@@ -23,7 +23,6 @@ def tablesInfo(filename):
                 table_info[name] = col_names
     except:
         print("Error Occured while collecting Table Info")
-        pass
     return table_info
             
 
@@ -49,3 +48,12 @@ if __name__ == "__main__":
         # print(name)
         TABLE_DATA[name] = tablesData(name)                
         # print(TABLE_DATA[name])
+    
+    try:
+        query = []
+        for i in range(1,len(sys.argv)):
+            query.append(sys.argv[i])
+
+        # QuerySolver(query)
+    except:
+        pass
