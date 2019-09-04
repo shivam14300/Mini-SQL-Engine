@@ -6,6 +6,7 @@ from collections import defaultdict
 AGGS = ['sum(','avg(','max(','min(']
 OPS = ['<','>','=']
 DOUBLE_OPS = ['<=','>=']
+
 def tablesInfo(filename):
     table_info = defaultdict(list)
     try:
@@ -23,7 +24,6 @@ def tablesInfo(filename):
     except:
         print("Error Occured while collecting Table Info")
     return table_info
-            
 
 def tablesData(tablename):
     table_data = []
@@ -39,7 +39,6 @@ def tablesData(tablename):
         print("Error occured while collecting",tablename, "data")
     return table_data
 
-
 TABLE_INFO = tablesInfo('files/metadata.txt')
 TABLE_DATA = defaultdict()
 
@@ -52,7 +51,6 @@ def joinTables(tab1,row1,tab2,row2):
     final_row = row1+row2
     return final_table,final_row
 
-
 def QuerySolver(query):
     distinct = 0
     if query[1] == 'distinct':
@@ -63,11 +61,26 @@ def QuerySolver(query):
         while i<len(query) and query[i].lower() != 'from':
             i += 1
         tables = query[i+1].split(',')
+        for i in range(len(tables)):
+            for j in range(len(tables)):
+                if i != j and tables[i] == tables[j]:
+                    print('Tables cannot be repeated')
+                    return -1
         
-        final_table,final_row = TABLE_DATA[tables[0]], TABLE_INFO[tables[0]]
+        final_tabel = []
+        final_row = []
+        if tables[0] in TABLE_INFO:
+            final_table,final_row = TABLE_DATA[tables[0]], TABLE_INFO[tables[0]]
+        else:
+            print('invalid table name')
+            return -1
         for j in range(1,len(tables)):
-            final_table,final_row = joinTables(final_table,final_row,TABLE_DATA[tables[j]], TABLE_INFO[tables[j]])
-        
+            if tables[i] in TABLE_INFO:
+                final_table,final_row = joinTables(final_table,final_row,TABLE_DATA[tables[j]], TABLE_INFO[tables[j]])
+            else:
+                print('invalid table name')
+                return -1
+
         if distinct:
             attr = query[2].split(',')
         else:
@@ -85,10 +98,10 @@ def QuerySolver(query):
         if where_idx > 0:
             final_condition, final_ops = makeConditionTable(where_idx,query)
         if len(final_condition) == 1:
-            final_table,final_row = processWhere(final_table,final_row,final_condition[0])
+            final_table,final_row = processWhere(attr,final_table,final_row,final_condition[0])
         elif len(final_condition) == 2:
-            final_table1,final_row1 = processWhere(final_table,final_row,final_condition[0])
-            final_table2,final_row2 = processWhere(final_table,final_row,final_condition[1])
+            final_table1,final_row1 = processWhere(attr,final_table,final_row,final_condition[0])
+            final_table2,final_row2 = processWhere(attr,final_table,final_row,final_condition[1])
             if final_ops[0] == 'OR':
                 final_table = final_table1+final_table2
             else:
@@ -99,20 +112,26 @@ def QuerySolver(query):
             if ats == '*':
                 printdata(final_row,final_table)
                 return 1
-        for ats in attr:
             for func in AGGS:
                 if func in ats:
                     aggs += 1
         if aggs and aggs != len(attr):
+            print('Attributes and Aggregate functions cannot be together')
             return -1
         
         end_rows = []
         end_tabs = []
         if aggs:
             end_rows = makeEndRows(attr,final_row,1)
+            if len(end_rows) != len(attr):
+                print('Invalid Attributes')
+                return -1
             end_tabs = makeEndTabs(distinct,end_rows,final_row,final_table,1)
         else:
             end_rows = makeEndRows(attr,final_row,2)
+            if len(end_rows) != len(attr):
+                print('Invalid Attributes')
+                return -1
             end_tabs = makeEndTabs(distinct,end_rows,final_row,final_table,2)
 
         printdata(end_rows,end_tabs)
@@ -125,25 +144,31 @@ def intersection(lst1, lst2):
     lst3 = [value for value in lst1 if value in lst2] 
     return lst3 
 
-def processWhere(table,row,condition):
-    f1 = 0
-    f2 = 0
+def processWhere(attr,table,row,condition):
+    f1,f2,a,b,ast = 0,0,0,0,0
+    for ats in attr:
+        if ats == '*':
+            ast = 1
+            break
     for r in row:
         x = r.split('.')[1]
         if condition[0] == x or condition[0] == r:
             f1 = 1
             condition[0] = r
-            break 
-    for r in row:
-        x = r.split('.')[1]
         if condition[2] == x or condition[2] == r:
             f2 = 1
             condition[2] = r
-            break
-    a = condition[0]
-    b = condition[2]
-    idx_a = -1
-    idx_b = -1
+    try:
+        if f1 == 0:
+            a = int(a)
+        if f2 == 0:
+            b = int(b)
+    except:
+        print('invalid condition')
+        exit(0)
+
+    a,b,c = condition[0],condition[2],condition[1]
+    idx_a,idx_b = -1,-1
     if f1 == 1:
         idx_a = 0
         while row[idx_a] != a:
@@ -152,109 +177,38 @@ def processWhere(table,row,condition):
         idx_b = 0
         while row[idx_b] != b:
             idx_b += 1 
-
     final_tabel = []
-    if condition[1] == '<':
+    for i in range(len(table)):
         if f1 == 0 and f2 == 0:
-            if int(a) < int(b):
-                final_tabel = table
-        if f1 == 0 and f2 == 1:
-            for i in range(len(table)):
-                if int(a) < table[i][idx_b]:
-                    final_tabel.append(table[i])
-
+            a,b = int(a),int(b)
         if f1 == 1 and f2 == 0:
-            for i in range(len(table)):
-                if table[i][idx_a] < int(b):
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 1:
-            for i in range(len(table)):
-                if table[i][idx_a] < table[i][idx_b]:
-                    final_tabel.append(table[i])
-
-    if condition[1] == '>':
-        if f1 == 0 and f2 == 0:
-            if int(a) > int(b):
-                final_tabel = table
-
+            a,b = table[i][idx_a],int(b)
         if f1 == 0 and f2 == 1:
-            for i in range(len(table)):
-                if int(a) > table[i][idx_b]:
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 0:
-            for i in range(len(table)):
-                if table[i][idx_a] > int(b):
-                    final_tabel.append(table[i])
-
+            a,b = int(a),table[i][idx_b]
         if f1 == 1 and f2 == 1:
-            for i in range(len(table)):
-                if table[i][idx_a] > table[i][idx_b]:
+            a,b = table[i][idx_a],table[i][idx_b]
+        if c == '<':
+            if a < b:
+                final_tabel.append(table[i])
+        if c == '>':
+            if a > b:
+                final_tabel.append(table[i])
+        if c == '<=':
+            if a <= b:
+                final_tabel.append(table[i])
+        if c == '>=':
+            if a >= b:
+                final_tabel.append(table[i])
+        if c == '=':
+            if a == b:
+                if f1 == 1 and f2 == 1 and ast == 1:
+                    x = table[i]
+                    del x[idx_b]
+                    final_tabel.append(x)
+                else:
                     final_tabel.append(table[i])
-    
-    if condition[1] == '<=':
-        if f1 == 0 and f2 == 0:
-            if int(a) <= int(b):
-                final_tabel = table
-
-        if f1 == 0 and f2 == 1:
-            for i in range(len(table)):
-                if int(a) <= table[i][idx_b]:
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 0:
-            for i in range(len(table)):
-                if table[i][idx_a] <= int(b):
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 1:
-            for i in range(len(table)):
-                if table[i][idx_a] <= table[i][idx_b]:
-                    final_tabel.append(table[i])
-    
-    if condition[1] == '>=':
-        if f1 == 0 and f2 == 0:
-            if int(a) >= int(b):
-                final_tabel = table
-
-        if f1 == 0 and f2 == 1:
-            for i in range(len(table)):
-                if int(a) >= table[i][idx_b]:
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 0:
-            for i in range(len(table)):
-                if table[i][idx_a] >= int(b):
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 1:
-            for i in range(len(table)):
-                if table[i][idx_a] >= table[i][idx_b]:
-                    final_tabel.append(table[i])
-
-    if condition[1] == '=':
-        if f1 == 0 and f2 == 0:
-            if int(a) == int(b):
-                final_tabel = table
-
-        if f1 == 0 and f2 == 1:
-            for i in range(len(table)):
-                if int(a) == table[i][idx_b]:
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 0:
-            for i in range(len(table)):
-                if table[i][idx_a] == int(b):
-                    final_tabel.append(table[i])
-
-        if f1 == 1 and f2 == 1:
-            for i in range(len(table)):
-                if table[i][idx_a] == table[i][idx_b]:
-                    final_tabel.append(table[i])
-            del row[idx_b]
-            for i in range(len(final_tabel)):
-                del final_tabel[i][idx_b]
+    if c == '=' and f1 == 1 and f2 == 1 and ast == 1:
+        del row[idx_b]
     return final_tabel,row
 
 def makeConditionTable(where_idx,query):
@@ -356,23 +310,30 @@ def makeEndRows(attr,final_row,flag):
                     break
     else:
         for ats in attr:  
+            f = 0
             for j in final_row:
                 if '.' in ats:
                     if ats == j:
-                        end_rows.append(ats)
-                        break
+                        if f == 0:
+                            end_rows.append(ats)
+                            f = 1
+                        else:
+                            print('Ambiguous Attributes')
+                            exit(0)
                 else:
                     for name in TABLE_INFO:
                         p = name + '.' + ats
                         if p == j:
-                            end_rows.append(p)
-                            break
+                            if f == 0:
+                                end_rows.append(p)
+                                f = 1
+                            else:
+                                print('Ambiguous Attributes')
+                                exit(0)
                     else:
                         continue
                     break
     return end_rows
-
-                
 
 def aggregate(query,final_row,final_table):
     agg_func = query.split('(')[0]
@@ -398,6 +359,7 @@ def aggregate(query,final_row,final_table):
             ans += final_table[i][idx]
         ans = ans/len(final_table)
     return ans
+
 def IsQueryValid(query,distinct):
     if query[0].lower() != 'select':
         return False
@@ -416,7 +378,6 @@ def IsQueryValid(query,distinct):
 def printdata(tablelabel,tabledata):
     print(','.join(map(str,tablelabel))) 
     for i in tabledata:
-
        print(','.join(map(str,i))) 
 
 
